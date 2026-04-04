@@ -115,7 +115,7 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 	urls = append(urls, URL{
 		URL:     rawURL,
 		Title:   title,
-		AddedAt: time.Now().Format("2006-01-02 15:04"),
+		AddedAt: time.Now().Format("2006-01-02"),
 	})
 	saveURLs()
 	mu.Unlock()
@@ -238,6 +238,16 @@ var tmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
             color: #e08a4a;
             text-decoration: none;
             word-break: break-all;
+            font-weight: 600;
+        }
+        @media (max-width: 600px) {
+            .url-item a {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                word-break: normal;
+                max-width: 200px;
+            }
         }
         .url-item a:hover { text-decoration: underline; color: #f0a060; }
         .url-meta {
@@ -374,6 +384,10 @@ func main() {
 	http.HandleFunc("/archive", handleArchive)
 	http.HandleFunc("/delete", handleDelete)
 
-	log.Println("Listening on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("Listening on http://localhost:%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
