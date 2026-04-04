@@ -49,6 +49,7 @@ The entire app lives in a single `main.go` file — HTTP handlers, HTML template
 
 ## TODO
 - [ ] don't focus on input field by default
+- [ ] do the same "..." concatenation for non-mobile viewports as well
 
 ## License
 
