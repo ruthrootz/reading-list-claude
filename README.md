@@ -47,6 +47,9 @@ The entire app lives in a single `main.go` file — HTTP handlers, HTML template
 | `/archive` | POST | Toggle archive status |
 | `/delete` | POST | Remove a URL |
 
+## TODO
+- [ ] don't focus on input field by default
+
 ## License
 
 MIT
