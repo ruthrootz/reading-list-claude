@@ -5,6 +5,10 @@
       "name": "reading-list-claude",
       "runtimeExecutable": "go",
       "runtimeArgs": ["run", "main.go"],
+      "env": {
+        "TURSO_DATABASE_URL": "libsql://reading-list-claude-ruthrootz.aws-us-east-2.turso.io",
+        "TURSO_AUTH_TOKEN": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzU2MDEzNjAsImlkIjoiMDE5ZDZhMTItODEwMS03NzMyLWFiZGUtMmFkZTNmZmI5MDE1IiwicmlkIjoiYzc3MTIyNGQtMzAxZi00YTA3LThjYzctNTZlM2M2NDU5MzcwIn0.bLS1cF5fl68ous8J6AqfmqeUqTzWQzG4H7E5BXDd6qfKk6LePpQJ0P_KtVMkofXsI72zpGnT695sp0cxZScfDQ"
+      },
       "port": 8080,
       "autoPort": false
     }

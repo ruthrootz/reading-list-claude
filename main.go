@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"database/sql"
 	"html/template"
 	"io"
 	"log"
@@ -9,17 +9,18 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
+
+	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
 
-const dataFile = "urls.json"
+var db *sql.DB
 
 type URL struct {
-	URL      string `json:"url"`
-	Title    string `json:"title"`
-	AddedAt  string `json:"added_at"`
-	Archived bool   `json:"archived,omitempty"`
+	URL      string
+	Title    string
+	AddedAt  string
+	Archived bool
 }
 
 type PageData struct {
@@ -38,7 +39,7 @@ func fetchTitle(pageURL string) string {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // read up to 1MB
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return ""
 	}
@@ -49,28 +50,31 @@ func fetchTitle(pageURL string) string {
 	return ""
 }
 
-var (
-	urls []URL
-	mu   sync.Mutex
-)
+func initDB() {
+	dbURL := os.Getenv("TURSO_DATABASE_URL")
+	token := os.Getenv("TURSO_AUTH_TOKEN")
+	if dbURL == "" {
+		log.Fatal("TURSO_DATABASE_URL is not set")
+	}
+	if token != "" {
+		dbURL += "?authToken=" + token
+	}
 
-func loadURLs() {
-	data, err := os.ReadFile(dataFile)
+	var err error
+	db, err = sql.Open("libsql", dbURL)
 	if err != nil {
-		urls = []URL{}
-		return
+		log.Fatalf("failed to open database: %v", err)
 	}
-	if err := json.Unmarshal(data, &urls); err != nil {
-		urls = []URL{}
-	}
-}
 
-func saveURLs() error {
-	data, err := json.MarshalIndent(urls, "", "  ")
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS urls (
+		url      TEXT PRIMARY KEY,
+		title    TEXT NOT NULL,
+		added_at TEXT NOT NULL,
+		archived INTEGER NOT NULL DEFAULT 0
+	)`)
 	if err != nil {
-		return err
+		log.Fatalf("failed to create table: %v", err)
 	}
-	return os.WriteFile(dataFile, data, 0644)
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -78,11 +82,23 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	mu.Lock()
-	defer mu.Unlock()
+
+	rows, err := db.QueryContext(r.Context(), `SELECT url, title, added_at, archived FROM urls ORDER BY added_at DESC`)
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
 	var data PageData
 	data.ShowArchived = r.URL.Query().Get("show") == "archived"
-	for _, u := range urls {
+	for rows.Next() {
+		var u URL
+		var archived int
+		if err := rows.Scan(&u.URL, &u.Title, &u.AddedAt, &archived); err != nil {
+			continue
+		}
+		u.Archived = archived == 1
 		if u.Archived {
 			data.Archived = append(data.Archived, u)
 		} else {
@@ -111,14 +127,12 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 		title = rawURL
 	}
 
-	mu.Lock()
-	urls = append(urls, URL{
-		URL:     rawURL,
-		Title:   title,
-		AddedAt: time.Now().Format("2006-01-02"),
-	})
-	saveURLs()
-	mu.Unlock()
+	_, err := db.Exec(`INSERT OR IGNORE INTO urls (url, title, added_at, archived) VALUES (?, ?, ?, 0)`,
+		rawURL, title, time.Now().Format("2006-01-02"))
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -130,15 +144,11 @@ func handleArchive(w http.ResponseWriter, r *http.Request) {
 	}
 	target := r.FormValue("url")
 
-	mu.Lock()
-	for i, u := range urls {
-		if u.URL == target {
-			urls[i].Archived = !urls[i].Archived
-			break
-		}
+	_, err := db.Exec(`UPDATE urls SET archived = CASE WHEN archived = 1 THEN 0 ELSE 1 END WHERE url = ?`, target)
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
 	}
-	saveURLs()
-	mu.Unlock()
 
 	http.Redirect(w, r, "/?show=archived", http.StatusSeeOther)
 }
@@ -150,15 +160,11 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	target := r.FormValue("url")
 
-	mu.Lock()
-	for i, u := range urls {
-		if u.URL == target {
-			urls = append(urls[:i], urls[i+1:]...)
-			break
-		}
+	_, err := db.Exec(`DELETE FROM urls WHERE url = ?`, target)
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
 	}
-	saveURLs()
-	mu.Unlock()
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -376,7 +382,7 @@ var tmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
 </html>`))
 
 func main() {
-	loadURLs()
+	initDB()
 
 	http.HandleFunc("/", handleIndex)
 	http.HandleFunc("/add", handleAdd)
