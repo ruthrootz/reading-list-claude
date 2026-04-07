@@ -16,17 +16,22 @@ import (
 
 var db *sql.DB
 
+var tabs = []string{"craft", "celebration", "contemplation", "constitution", "community"}
+
 type URL struct {
 	URL      string
 	Title    string
 	AddedAt  string
 	Archived bool
+	Tab      string
 }
 
 type PageData struct {
 	Active       []URL
 	Archived     []URL
 	ShowArchived bool
+	Tab          string
+	Tabs         []string
 }
 
 var titleRe = regexp.MustCompile(`(?i)<title[^>]*>\s*(.*?)\s*</title>`)
@@ -70,11 +75,25 @@ func initDB() {
 		url      TEXT PRIMARY KEY,
 		title    TEXT NOT NULL,
 		added_at TEXT NOT NULL,
-		archived INTEGER NOT NULL DEFAULT 0
+		archived INTEGER NOT NULL DEFAULT 0,
+		tab      TEXT NOT NULL DEFAULT 'craft'
 	)`)
 	if err != nil {
 		log.Fatalf("failed to create table: %v", err)
 	}
+
+	// Add tab column to existing tables that predate this feature.
+	db.Exec(`ALTER TABLE urls ADD COLUMN tab TEXT NOT NULL DEFAULT 'craft'`)
+}
+
+func activeTab(r *http.Request) string {
+	t := r.URL.Query().Get("tab")
+	for _, tab := range tabs {
+		if t == tab {
+			return t
+		}
+	}
+	return tabs[0]
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -83,15 +102,19 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := db.QueryContext(r.Context(), `SELECT url, title, added_at, archived FROM urls ORDER BY added_at DESC`)
+	tab := activeTab(r)
+	rows, err := db.QueryContext(r.Context(), `SELECT url, title, added_at, archived FROM urls WHERE tab = ? ORDER BY added_at DESC`, tab)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var data PageData
-	data.ShowArchived = r.URL.Query().Get("show") == "archived"
+	data := PageData{
+		Tab:          tab,
+		Tabs:         tabs,
+		ShowArchived: r.URL.Query().Get("show") == "archived",
+	}
 	for rows.Next() {
 		var u URL
 		var archived int
@@ -130,14 +153,26 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 		title = rawURL
 	}
 
-	_, err := db.Exec(`INSERT OR IGNORE INTO urls (url, title, added_at, archived) VALUES (?, ?, ?, 0)`,
-		rawURL, title, time.Now().UTC().Format(time.RFC3339))
+	tab := r.FormValue("tab")
+	valid := false
+	for _, t := range tabs {
+		if tab == t {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		tab = tabs[0]
+	}
+
+	_, err := db.Exec(`INSERT OR IGNORE INTO urls (url, title, added_at, archived, tab) VALUES (?, ?, ?, 0, ?)`,
+		rawURL, title, time.Now().UTC().Format(time.RFC3339), tab)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/?tab="+tab, http.StatusSeeOther)
 }
 
 func handleArchive(w http.ResponseWriter, r *http.Request) {
@@ -146,6 +181,7 @@ func handleArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := r.FormValue("url")
+	tab := r.FormValue("tab")
 
 	_, err := db.Exec(`UPDATE urls SET archived = CASE WHEN archived = 1 THEN 0 ELSE 1 END WHERE url = ?`, target)
 	if err != nil {
@@ -153,7 +189,7 @@ func handleArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/?show=archived", http.StatusSeeOther)
+	http.Redirect(w, r, "/?tab="+tab+"&show=archived", http.StatusSeeOther)
 }
 
 func handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +198,7 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := r.FormValue("url")
+	tab := r.FormValue("tab")
 
 	_, err := db.Exec(`DELETE FROM urls WHERE url = ?`, target)
 	if err != nil {
@@ -169,7 +206,7 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/?tab="+tab, http.StatusSeeOther)
 }
 
 var tmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
@@ -311,12 +348,52 @@ var tmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
             color: #555;
             padding: 40px 0;
         }
+        .tabs {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .tab-btn {
+            background: #242424;
+            border: 1px solid #333;
+            color: #666;
+            cursor: pointer;
+            font-size: 1rem;
+            font-family: inherit;
+            letter-spacing: 0.06em;
+            text-transform: lowercase;
+            padding: 7px 18px;
+            border-radius: 999px;
+            text-decoration: none;
+            transition: color 0.15s, border-color 0.15s, background 0.15s;
+        }
+        .tab-btn:hover {
+            color: #e08a4a;
+            border-color: #6b3a1f;
+            background: #2a2218;
+        }
+        .tab-btn.active {
+            background: #2a2218;
+            color: #e08a4a;
+            border-color: #c45e1a;
+            box-shadow: 0 0 0 2px rgba(196,94,26,0.15);
+        }
     </style>
 </head>
 <body>
     <h1>reading list</h1>
 
+    <nav class="tabs">
+        {{$currentTab := .Tab}}
+        {{range .Tabs}}
+        <a class="tab-btn{{if eq . $currentTab}} active{{end}}" href="/?tab={{.}}">{{.}}</a>
+        {{end}}
+    </nav>
+
     <form class="add-form" action="/add" method="POST">
+        <input type="hidden" name="tab" value="{{.Tab}}">
         <input type="text" name="url" placeholder="enter a url...">
         <button type="submit" title="Save"><i class="fa-solid fa-bookmark"></i></button>
     </form>
@@ -336,10 +413,12 @@ var tmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
                 <span class="url-date">{{.AddedAt}}</span>
                 <form action="/archive" method="POST" style="display:inline">
                     <input type="hidden" name="url" value="{{.URL}}">
+                    <input type="hidden" name="tab" value="{{$.Tab}}">
                     <button type="submit" class="action-btn archive-btn" title="Archive"><i class="fa-solid fa-box-archive"></i></button>
                 </form>
                 <form action="/delete" method="POST" style="display:inline">
                     <input type="hidden" name="url" value="{{.URL}}">
+                    <input type="hidden" name="tab" value="{{$.Tab}}">
                     <button type="submit" class="action-btn delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button>
                 </form>
             </div>
@@ -360,10 +439,12 @@ var tmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
                     <span class="url-date">{{.AddedAt}}</span>
                     <form action="/archive" method="POST" style="display:inline">
                         <input type="hidden" name="url" value="{{.URL}}">
+                        <input type="hidden" name="tab" value="{{$.Tab}}">
                         <button type="submit" class="action-btn archive-btn" title="Unarchive"><i class="fa-solid fa-rotate-left"></i></button>
                     </form>
                     <form action="/delete" method="POST" style="display:inline">
                         <input type="hidden" name="url" value="{{.URL}}">
+                        <input type="hidden" name="tab" value="{{$.Tab}}">
                         <button type="submit" class="action-btn delete-btn" title="Delete"><i class="fa-solid fa-trash"></i></button>
                     </form>
                 </div>
