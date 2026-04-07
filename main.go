@@ -309,7 +309,7 @@ var tmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
     <h1>reading list</h1>
 
     <form class="add-form" action="/add" method="POST">
-        <input type="text" name="url" placeholder="enter a url..." autofocus>
+        <input type="text" name="url" placeholder="enter a url...">
         <button type="submit" title="Save"><i class="fa-solid fa-bookmark"></i></button>
     </form>
 

@@ -48,7 +48,7 @@ The entire app lives in a single `main.go` file — HTTP handlers, HTML template
 | `/delete` | POST | Remove a URL |
 
 ## TODO
-- [ ] don't focus on input field by default
+- [x] don't focus on input field by default
 - [ ] do the same "..." concatenation for non-mobile viewports as well
 
 ## License
