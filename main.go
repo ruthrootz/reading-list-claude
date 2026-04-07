@@ -237,15 +237,14 @@ var tmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
         .url-item a {
             color: #e08a4a;
             text-decoration: none;
-            word-break: break-all;
             font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 460px;
         }
         @media (max-width: 600px) {
             .url-item a {
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                word-break: normal;
                 max-width: 200px;
             }
         }
