@@ -47,6 +47,16 @@ The entire app lives in a single `main.go` file — HTTP handlers, HTML template
 | `/archive` | POST | Toggle archive status |
 | `/delete` | POST | Remove a URL |
 
+## Tabs
+
+| Tab | Description |
+|-----|-------------|
+| **craft** | Coding, software engineering, and work-related topics |
+| **celebration** | Travel, music, and fun hobbies that aren't sports/physical activity |
+| **contemplation** | Reading and writing |
+| **constitution** | Physical health and financial health |
+| **community** | Church, faith, socializing, and community events |
+
 ## TODO
 - [x] don't focus on input field by default
 - [x] do the same "..." concatenation for non-mobile viewports as well
