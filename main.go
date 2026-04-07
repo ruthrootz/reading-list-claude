@@ -98,6 +98,9 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&u.URL, &u.Title, &u.AddedAt, &archived); err != nil {
 			continue
 		}
+		if len(u.AddedAt) > 10 {
+			u.AddedAt = u.AddedAt[:10]
+		}
 		u.Archived = archived == 1
 		if u.Archived {
 			data.Archived = append(data.Archived, u)
@@ -128,7 +131,7 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := db.Exec(`INSERT OR IGNORE INTO urls (url, title, added_at, archived) VALUES (?, ?, ?, 0)`,
-		rawURL, title, time.Now().Format("2006-01-02"))
+		rawURL, title, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
