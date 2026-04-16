@@ -60,6 +60,7 @@ The entire app lives in a single `main.go` file — HTTP handlers, HTML template
 ## TODO
 - [x] don't focus on input field by default
 - [x] do the same "..." concatenation for non-mobile viewports as well
+- [ ] make the list itself scrollable so the web browser doesn't need to use the scroll feature and so the page heading and tabs stay fixed on the page
 
 ## License
 
